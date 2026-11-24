@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ペダリング解析</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,400;100,600;112,800&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: an engineer's own analysis bench, dense and exact
+   IDEA the Shimano Connect Lab pedaling screen, rebuilt as a personal tool
+   PICTURE two crank circles with 12 force arrows each, and the tangential-force curve beside them
+   COLOUR Connect Lab palette: navy ground, blue plus, red minus, grey void, four curve colours
+   TYPE Archivo wide 800 for numerals and titles + Noto Sans JP
+   LAYOUT title bar with file controls; cranks + curve across; timeline band; table + figures */
+:root{color-scheme:dark;--bg:#0c151d;--ink:#ffffff;--mute:#8ea2b2;--line:rgba(255,255,255,.16);--panel:rgba(255,255,255,.05);--L:#50e3c2;--R:#ed2fb8;--LN:#7965f1;--RN:#ffc962;--pos:#0099ff;--neg:#ef453c;--zero:#829daf;--hl:#ffea00;--sel:rgba(0,153,255,.2)}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 "Noto Sans JP","Archivo",system-ui,sans-serif;overflow-x:clip}
+.num{font-family:"Archivo",sans-serif;font-variant-numeric:tabular-nums}
+.band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
+header.band{border-top:4px solid var(--pos);padding-bottom:12px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between}
+h1{font:800 clamp(30px,4.4vw,46px)/1.05 "Archivo","Noto Sans JP",sans-serif;font-stretch:112%;letter-spacing:-.02em;margin:0}
+h2{font-size:18px;margin:0 0 10px}
+.meta{color:var(--mute);font-size:14px;margin-top:6px}
+.ctrl{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button,.file{font:600 15px "Noto Sans JP",sans-serif;min-height:44px;padding:0 16px;border-radius:6px;border:1.5px solid var(--ink);background:var(--bg);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button.pri,.file{background:var(--ink);color:var(--bg)}
+button:hover,.file:hover{opacity:.85}
+button:focus-visible,.file:focus-within,input:focus-visible{outline:3px solid var(--pos);outline-offset:2px}
+button:disabled{opacity:.35;cursor:default}
+.file input{position:absolute;width:1px;height:1px;opacity:0}
+label.inp{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)}
+input[type=text],input[type=number]{font:16px "Archivo",sans-serif;width:6.2em;min-height:40px;padding:0 8px;border:1.5px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(8.5em,1fr));gap:2px;border-top:1.5px solid var(--ink);border-bottom:1px solid var(--line)}
+.fg{padding:10px 4px 12px}
+.fg b{display:block;font:800 clamp(22px,3vw,30px)/1.1 "Archivo",sans-serif;font-stretch:112%;white-space:nowrap}
+.fg>span{font-size:13px;color:var(--mute)}
+.fg i{font-style:normal;font-size:13px;color:var(--mute);margin-left:4px}
+.lc{color:var(--L)}.rc{color:var(--R)}
+.main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);gap:16px;margin-top:18px}
+.card{background:var(--panel);border-radius:8px;padding:12px 12px 6px}
+.card h3{margin:0;font-size:15px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.fig{position:relative;min-height:300px}.fig>svg,.fig>canvas{position:absolute;inset:0;width:100%;height:100%}
+svg text{font:13px "Archivo","Noto Sans JP",sans-serif;fill:var(--mute)}
+.note{font-size:13px;color:var(--mute);margin:6px 0 0}
+.tl{border-top:1px solid var(--line)}
+.tlfig{position:relative;height:190px;touch-action:none;cursor:crosshair;margin-top:8px}
+.tlfig canvas{position:absolute;inset:0;width:100%;height:100%}
+.vl{position:absolute;top:0;bottom:20px;width:1px;background:var(--ink);pointer-events:none;display:none}
+.tip{position:fixed;z-index:9;pointer-events:none;display:none;background:#152431;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:13px;line-height:1.5;box-shadow:0 4px 14px #0002;white-space:nowrap}
+.tip b{font:800 14px "Archivo",sans-serif}
+.tip table{font-size:13px;width:auto}.tip td,.tip th{padding:1px 6px;border:0}
+.seg{display:inline-flex;border:1.5px solid var(--ink);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:32px;padding:0 10px;font-size:13px;background:var(--bg);color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{min-height:36px;padding:0 12px;font-size:14px;border:1.5px solid var(--line);font-weight:400}
+.chip i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:2px}
+.chip[aria-pressed=true]{border-color:var(--ink);font-weight:600}
+.chip[aria-pressed=false]{opacity:.55}
+.chip[aria-pressed=false]:hover{opacity:.85}
+.cls{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--mute);margin-top:8px}
+.cls s{display:inline-block;width:16px;height:4px;vertical-align:middle;margin-right:5px;text-decoration:none;border-radius:2px}
+.lower{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-weight:600;color:var(--mute);font-size:13px}
+td:first-child,th:first-child{text-align:left}
+td.bar{width:34%;min-width:90px}
+.bw{position:relative;height:18px}
+.bw span{position:absolute;top:2px;height:6px}
+.bw span.r{top:10px}
+.bw em{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+.spec{font-size:14px}
+.spec code{font-size:13px;overflow-wrap:anywhere}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:28px;text-align:center;color:var(--mute)}
+body.drag .drop{border-color:var(--pos);color:var(--pos)}
+.err{color:var(--R);font-weight:700}
+.leg{display:inline-flex;gap:14px;font-size:13px;color:var(--mute)}
+.leg s{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:4px;text-decoration:none}
+@media(max-width:980px){.main{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.main .curve{grid-column:1/-1}.lower{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.main{grid-template-columns:minmax(0,1fr)}.fig{min-height:280px}table{font-size:13px}th,td{padding:5px 4px}td.bar{display:none}th.bar{display:none}}
+</style>
+</head>
+<body>
+<header class="band">
+  <div>
+    <h1>ペダリング解析</h1>
+    <div class="meta" id="meta">読み込み中…</div>
+  </div>
+  <div class="ctrl">
+    <label class="file" for="f">FITを開く<input id="f" type="file" accept=".fit,.dat,.zip,.FIT"></label>
+    <label class="inp">クランク長 <input id="crank" type="number" step="0.5" min="150" max="185" value="167.5"> mm</label>
+  </div>
+</header>
+
+<section class="band" style="padding-top:8px">
+  <div class="figs" id="figs"></div>
+  <div class="main">
+    <div class="card"><h3><span class="lc">左脚</span><span class="num" id="lk"></span></h3><div class="fig" id="pL"></div></div>
+    <div class="card"><h3><span class="rc">右脚</span><span class="num" id="rk"></span></h3><div class="fig" id="pR"></div></div>
+    <div class="card curve"><h3><span>ペダリンググラフ ［N］</span><span class="leg"><span><s style="background:var(--L)"></s>左 接線</span><span><s style="background:var(--R)"></s>右 接線</span><span><s style="background:var(--LN)"></s>左 法線</span><span><s style="background:var(--RN)"></s>右 法線</span><span id="refleg" hidden><s style="background:repeating-linear-gradient(90deg,var(--mute) 0 4px,transparent 4px 7px)"></s>基準</span></span></h3><div class="fig" id="cv"></div></div>
+  </div>
+  <div class="cls"><span><s style="background:var(--pos)"></s>プラス（回転方向へ効いている）</span><span><s style="background:var(--zero)"></s>無効（回転方向の力がほぼゼロ）</span><span><s style="background:var(--neg)"></s>マイナス（回転を妨げている）</span><span><s style="background:repeating-linear-gradient(90deg,var(--mute) 0 4px,transparent 4px 7px)"></s>基準区間</span></div>
+  <p class="note">右側から見た図（進行方向は右、0°＝上死点、時計回り）。中央の数字はペダリング効率。矢印は各30°区間の平均の力ベクトル［N］。色の判定はShimano Connect Labと同じで、接線力の生値（7ビット値）が＋2より大きければプラス、−2より小さければマイナス、その間を無効としています。矢印や曲線にカーソルを合わせると数値が出て、対応する角度が黄色く光ります。法線力の＋はクランク外向き（引っ張り）、−は中心向き（押しつけ）。</p>
+</section>
+
+<section class="band tl">
+  <h2>区間を選ぶ</h2>
+  <div class="ctrl">
+    <label class="inp">開始 <input id="a" type="text" inputmode="numeric" value="0:00"></label>
+    <label class="inp">終了 <input id="b" type="text" inputmode="numeric" value="0:00"></label>
+    <button id="all">全体</button>
+    <button id="pin" class="pri">基準に固定</button>
+    <button id="unpin" disabled>基準を解除</button>
+  </div>
+  <div class="chips" id="chips">
+    <button class="chip" data-s="pw" aria-pressed="true"><i style="background:var(--ink)"></i>パワー</button>
+    <button class="chip" data-s="cad" aria-pressed="true"><i style="background:var(--mute)"></i>ケイデンス</button>
+    <button class="chip" data-s="effL" aria-pressed="false"><i style="background:var(--L)"></i>効率 左</button>
+    <button class="chip" data-s="effR" aria-pressed="false"><i style="background:var(--R)"></i>効率 右</button>
+  </div>
+  <div class="tlfig" id="tl"><canvas id="tlc"></canvas><div class="vl" id="vl"></div></div>
+  <p class="note">グラフ上をドラッグして区間を選択。カーソルを乗せると、その1秒のベクトルが上の図に出ます。パワーと効率は5秒平均。左の目盛りはパワー［W］、右の目盛りは効率［%］とケイデンス［rpm］。</p>
+</section>
+
+<section class="band tl lower">
+  <div>
+    <h2>30°区間ごとの力 ［N］</h2>
+    <div class="scroll"><table id="tbl"></table></div>
+  </div>
+  <div class="spec">
+    <h2>データについて</h2>
+    <div class="drop" id="drop">FIT／.dat／.zipをここにドロップ</div>
+    <p>Wahooのサイコン（ELEMNT）がPioneer／シマノのペダリングモニターから記録したFITを読みます。ファイルはブラウザの中だけで処理され、どこにも送信されません。最初は2026-11-24のドリル走のデータを表示しています。</p>
+    <details>
+      <summary>デコード仕様</summary>
+      <p>メッセージ <code>65286</code>、1秒ごとに左右1件ずつ。field 1：0＝右、1＝左。field 2：トルク×256［N·m］。field 3：ケイデンス。field 4：ペダリング効率［%］。field 5（6バイト）＋6（11バイト）を上位ビットから読んだ136ビットのうち、0–47が法線12区間（4ビット符号＋絶対値、×9）、48–131が接線12区間（7ビット符号＋絶対値）。</p>
+      <p>ニュートン換算：k＝トルク ÷（クランク長 × 接線生値の平均）。接線力＝生値×k、法線力＝生値×9×k。法線の＋はクランク外向き（引っ張り）、−は中心向き（押しつけ）。</p>
+    </details>
+  </div>
+</section>
+
+<div class="tip" id="tip"></div>
+<script>
+/* FIT parsing + Pioneer force-vector decode (message 65286) */
+const FIT_EPOCH = 631065600;
+async function unzipFirst(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  let e = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error('ZIPの目次が見つかりません');
+  const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true);
+  const ents = [];
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
+    ents.push({ method, csize, usize, off, name }); p += 46 + nl + xl + cl;
+  }
+  const cand = ents.filter(x => !x.name.endsWith('/') && !x.name.startsWith('__MACOSX'));
+  const pick = cand.find(x => /\.(fit|dat)$/i.test(x.name)) || cand.sort((a, b) => b.usize - a.usize)[0];
+  if (!pick) throw new Error('ZIPにファイルがありません');
+  const lo = pick.off, start = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true);
+  const data = u8.slice(start, start + pick.csize);
+  if (pick.method === 0) return data.buffer;
+  if (pick.method !== 8) throw new Error('未対応の圧縮形式です');
+  const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return await new Response(ds).arrayBuffer();
+}
+function parseFit(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  const hs = u8[0];
+  if (String.fromCharCode(u8[8], u8[9], u8[10], u8[11]) !== '.FIT') throw new Error('FITファイルではありません');
+  const end = Math.min(u8.length, hs + dv.getUint32(4, true));
+  const defs = {}; let p = hs, lastTs = 0;
+  const rec = new Map(), ped = new Map(); let sport = null;
+  const rd = (bt, o, s, le) => {
+    const t = bt & 0x1f;
+    if (t === 0 || t === 2 || t === 10 || t === 13) { const v = u8[o]; return v === 0xff && t !== 10 && t !== 13 ? null : v; }
+    if (t === 1) { const v = dv.getInt8(o); return v === 127 ? null : v; }
+    if (t === 4 || t === 11) { const v = dv.getUint16(o, le); return v === 0xffff ? null : v; }
+    if (t === 3) { const v = dv.getInt16(o, le); return v === 0x7fff ? null : v; }
+    if (t === 6 || t === 12) { const v = dv.getUint32(o, le); return v === 0xffffffff ? null : v; }
+    if (t === 5) { const v = dv.getInt32(o, le); return v === 0x7fffffff ? null : v; }
+    return null;
+  };
+  while (p < end) {
+    const h = u8[p++];
+    if (h & 0x40 && !(h & 0x80)) {
+      const loc = h & 15, le = u8[p + 1] === 0, g = le ? dv.getUint16(p + 2, true) : dv.getUint16(p + 2, false), nf = u8[p + 4];
+      p += 5; const fields = [];
+      for (let i = 0; i < nf; i++) { fields.push({ n: u8[p], s: u8[p + 1], bt: u8[p + 2] }); p += 3; }
+      let dev = 0;
+      if (h & 0x20) { const nd = u8[p++]; for (let i = 0; i < nd; i++) { dev += u8[p + 1]; p += 3; } }
+      defs[loc] = { g, le, fields, dev };
+      continue;
+    }
+    let loc, ts = null;
+    if (h & 0x80) { loc = (h >> 5) & 3; const off = h & 31; ts = (lastTs & ~31) + off; if (off < (lastTs & 31)) ts += 32; lastTs = ts; }
+    else loc = h & 15;
+    const d = defs[loc]; if (!d) throw new Error('定義のないデータレコード (' + p + ')');
+    const v = {};
+    for (const f of d.fields) {
+      if (d.g === 65286 && (f.n === 5 || f.n === 6)) v[f.n] = u8.slice(p, p + f.s);
+      else if (f.s > 0) v[f.n] = rd(f.bt, p, f.s, d.le);
+      p += f.s;
+    }
+    p += d.dev;
+    if (v[253] != null) { ts = v[253]; lastTs = ts; }
+    if (d.g === 20 && ts != null) rec.set(ts, { pw: v[7], cad: v[4], hr: v[3] });
+    else if (d.g === 65286 && v[0] != null && v[1] != null) {
+      let o = ped.get(v[0]); if (!o) ped.set(v[0], o = [null, null]);
+      o[v[1] ? 1 : 0] = { tq: v[2], cad: v[3], eff: v[4], bytes: [...v[5], ...v[6]] };
+    } else if (d.g === 12 || d.g === 18) { if (v[5] != null && sport == null) sport = v[5]; }
+  }
+  return { rec, ped };
+}
+function decodeVec(bytes) {
+  let bits = ''; for (const b of bytes) bits += b.toString(2).padStart(8, '0');
+  const N = [], T = [];
+  for (let i = 0; i < 12; i++) {
+    const a = bits.slice(i * 4, i * 4 + 4); N.push((a[0] === '1' ? -1 : 1) * parseInt(a.slice(1), 2));
+    const b = bits.slice(48 + i * 7, 55 + i * 7); T.push((b[0] === '1' ? -1 : 1) * parseInt(b.slice(1), 2));
+  }
+  return { N, T };
+}
+/* build per-second series. side index: 0 = right, 1 = left */
+function buildSeries(fit, crankMm) {
+  const L = crankMm / 1000;
+  const tsList = [...new Set([...fit.rec.keys(), ...fit.ped.keys()])].sort((a, b) => a - b);
+  if (!tsList.length) throw new Error('記録データがありません');
+  const t0 = tsList[0], rows = [];
+  for (const ts of tsList) {
+    const r = fit.rec.get(ts) || {}, pp = fit.ped.get(ts) || [null, null];
+    const legs = pp.map(x => {
+      if (!x) return null;
+      const { N, T } = decodeVec(x.bytes), tq = x.tq == null ? null : x.tq / 256;
+      const m = T.reduce((s, y) => s + y, 0) / 12;
+      const k = tq != null && Math.abs(m) > 0.5 ? tq / (L * m) : null;
+      return { tq, cad: x.cad, eff: x.eff, N, T, k, TF: k ? T.map(y => y * k) : null, NF: k ? N.map(y => y * 9 * k) : null };
+    });
+    rows.push({ t: ts - t0, ts, pw: r.pw ?? null, cad: r.cad ?? (legs[0]?.cad ?? legs[1]?.cad ?? null), hr: r.hr ?? null, R: legs[0], L: legs[1] });
+  }
+  /* seconds where torque can't give a scale (e.g. unweighted leg): use that leg's median scale */
+  for (const s of ['L', 'R']) {
+    const ks = rows.map(r => r[s] && r[s].k).filter(k => k > 0).sort((a, b) => a - b);
+    if (!ks.length) continue;
+    const km = ks[ks.length >> 1];
+    for (const r of rows) { const x = r[s]; if (x && !x.k) { x.k = km; x.est = true; x.TF = x.T.map(y => y * km); x.NF = x.N.map(y => y * 9 * km); } }
+  }
+  return rows;
+}
+function rangeStats(rows, a, b) {
+  const st = { n: 0, pw: 0, pwn: 0, cad: 0, cadn: 0 };
+  const leg = () => ({ n: 0, TF: Array(12).fill(0), NF: Array(12).fill(0), Tr: Array(12).fill(0), tq: 0, eff: 0, effn: 0 });
+  st.L = leg(); st.R = leg();
+  for (const r of rows) {
+    if (r.t < a || r.t > b) continue; st.n++;
+    if (r.pw != null) { st.pw += r.pw; st.pwn++; }
+    if (r.cad) { st.cad += r.cad; st.cadn++; }
+    for (const s of ['L', 'R']) {
+      const x = r[s]; if (!x || !x.TF || !(x.cad || a === b)) continue;
+      const o = st[s]; o.n++; o.tq += x.tq || 0;
+      for (let i = 0; i < 12; i++) { o.TF[i] += x.TF[i]; o.NF[i] += x.NF[i]; o.Tr[i] += x.T[i]; }
+      if (x.eff != null && x.eff <= 100) { o.eff += x.eff; o.effn++; }
+    }
+  }
+  st.pw = st.pwn ? st.pw / st.pwn : null; st.cad = st.cadn ? st.cad / st.cadn : null;
+  for (const s of ['L', 'R']) {
+    const o = st[s]; if (!o.n) { o.empty = true; continue; }
+    o.TF = o.TF.map(v => v / o.n); o.NF = o.NF.map(v => v / o.n); o.Tr = o.Tr.map(v => v / o.n); o.tq /= o.n; o.eff = o.effn ? o.eff / o.effn : null;
+  }
+  const lt = st.L.empty ? 0 : st.L.tq, rt = st.R.empty ? 0 : st.R.tq;
+  st.bal = lt + rt > 0 ? lt / (lt + rt) * 100 : null;
+  return st;
+}
+if (typeof module !== 'undefined') module.exports = { parseFit, buildSeries, rangeStats, decodeVec, unzipFirst };
+
+</script>
+<script>
+{
+const $ = id => document.getElementById(id);
+const st = { hi: null, show: { pw: true, cad: true, effL: false, effR: false }, fit: null, rows: [], a: 0, b: 0, ref: null, name: '' };
+const fmt = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+const parseT = v => { const p = String(v).trim().split(':').map(Number); if (p.some(isNaN)) return null; return p.reduce((s, x) => s * 60 + x, 0); };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const col = n => { const d = document.createElement('i'); d.style.color = `var(${n})`; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
+const V = () => st.hovS || st.cur;
+const labels = () => { const lab = k => V()[k].empty ? '' : st.hov != null ? `${fmt(st.hov)} 時点` : `${V()[k].n}秒平均`; $('lk').textContent = lab('L'); $('rk').textContent = lab('R'); };
+const r0 = v => v == null || isNaN(v) ? '–' : Math.round(v);
+
+function load(fit, name) {
+  st.fit = fit; st.name = name;
+  st.rows = buildSeries(fit, +$('crank').value || 167.5);
+  st.a = 0; st.b = st.rows[st.rows.length - 1].t; st.ref = null;
+  const hasPed = st.rows.some(r => r.L || r.R);
+  const d0 = new Date((st.rows[0].ts + FIT_EPOCH) * 1000);
+  $('meta').textContent = `${name} ・ ${d0.toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' })} ・ ${fmt(st.b)}` + (hasPed ? '' : ' ・ ペダリングデータなし');
+  $('meta').className = hasPed ? 'meta' : 'meta err';
+  update();
+}
+function rebuild() { if (!st.fit) return; st.rows = buildSeries(st.fit, +$('crank').value || 167.5); update(); }
+function update() {
+  $('a').value = fmt(st.a); $('b').value = fmt(st.b);
+  $('unpin').disabled = !st.ref; $('refleg').hidden = !st.ref;
+  st.cur = rangeStats(st.rows, st.a, st.b);
+  drawAll();
+}
+function figs(s) {
+  const L = s.L, R = s.R;
+  const items = [
+    st.hov != null ? ['時点', fmt(st.hov), ''] : ['区間', fmt(st.b - st.a), ''],
+    [st.hov != null ? 'パワー' : '平均パワー', r0(s.pw), 'W'],
+    ['ケイデンス', r0(s.cad), 'rpm'],
+    ['左右バランス', s.bal == null ? '–' : `<span class="lc">${Math.round(s.bal)}</span>:<span class="rc">${Math.round(100 - s.bal)}</span>`, ''],
+    ['効率 左／右', `<span class="lc">${r0(L.eff)}</span>/<span class="rc">${r0(R.eff)}</span>`, '%'],
+    ['トルク 左／右', `<span class="lc">${L.empty ? '–' : L.tq.toFixed(1)}</span>/<span class="rc">${R.empty ? '–' : R.tq.toFixed(1)}</span>`, 'N·m']
+  ];
+  $('figs').innerHTML = items.map(([l, v, u]) => `<div class="fg"><span>${l}</span><b class="num">${v}<i>${u}</i></b></div>`).join('');
+}
+function maxF() {
+  let m = 1;
+  for (const s of [V(), st.ref]) if (s) for (const k of ['L', 'R']) if (!s[k].empty) for (let i = 0; i < 12; i++) m = Math.max(m, Math.hypot(s[k].TF[i], s[k].NF[i]));
+  return m;
+}
+const cls = tr => tr > 2 ? 'p' : tr < -2 ? 'm' : 'z';
+const CLSN = { p: 'プラス', z: '無効', m: 'マイナス' };
+function polar(el, side) {
+  const W = el.clientWidth, H = el.clientHeight, cx = W / 2, cy = H / 2;
+  const Rc = Math.min(W, H) * 0.3, sc = Math.min(W, H) * 0.17 / maxF();
+  const c = 'var(--pos)';
+  let s = `<svg viewBox="0 0 ${W} ${H}"><defs>`;
+  for (const [id, f] of [['h' + side, 'var(--hl)'], ['p' + side, c], ['z' + side, 'var(--zero)'], ['m' + side, 'var(--neg)'], ['g' + side, 'var(--mute)']]) s += `<marker id="mk${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${f}"/></marker>`;
+  s += `</defs><circle cx="${cx}" cy="${cy}" r="${Rc}" fill="none" stroke="var(--line)" stroke-width="2"/>`;
+  for (let i = 0; i < 12; i++) {
+    const th = i * Math.PI / 6, x = cx + Rc * Math.sin(th), y = cy - Rc * Math.cos(th);
+    s += `<line x1="${cx + Rc * 0.4 * Math.sin(th)}" y1="${cy - Rc * 0.4 * Math.cos(th)}" x2="${x}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    if (i % 3 === 0) { const lx = cx + (Rc * 0.62) * Math.sin(th), ly = cy - (Rc * 0.62) * Math.cos(th) + 4; s += `<text x="${lx}" y="${ly}" text-anchor="middle">${i * 30}°</text>`; }
+  }
+  const arrows = (S, ref) => {
+    if (!S || S[side].empty) return '';
+    let o = '';
+    for (let i = 0; i < 12; i++) {
+      const th = i * Math.PI / 6, sn = Math.sin(th), cs = Math.cos(th);
+      const x = cx + Rc * sn, y = cy - Rc * cs, T = S[side].TF[i], N = S[side].NF[i];
+      const dx = (T * cs + N * sn) * sc, dy = (T * sn - N * cs) * sc;
+      if (Math.hypot(dx, dy) < 2) continue;
+      const k0 = ref ? 'g' : cls(S[side].Tr[i]), k = !ref && st.hi === i ? 'h' : k0, sk = { p: c, z: 'var(--zero)', m: 'var(--neg)', g: 'var(--mute)', h: 'var(--hl)' }[k];
+      const ln = `x1="${x}" y1="${y}" x2="${x + dx}" y2="${y + dy}"`;
+      o += `<g data-i="${i}" data-ref="${ref ? 1 : 0}"><line ${ln} stroke="${sk}" stroke-width="${ref ? 2 : 3.5}" ${ref ? 'stroke-dasharray="4 3"' : ''} stroke-linecap="round" marker-end="url(#mk${k}${side})"/>${ref ? '' : `<line ${ln} stroke="transparent" stroke-width="16"/>`}</g>`;
+    }
+    return o;
+  };
+  s += arrows(st.ref, true) + arrows(V(), false);
+  const ef = V()[side].empty ? null : V()[side].eff, fs = Math.round(Rc * 0.42);
+  if (ef != null) {
+    s += `<text x="${cx}" y="${cy + fs * 0.32}" text-anchor="middle" style="font:800 ${fs}px Archivo,sans-serif;font-stretch:112%;fill:var(--ink)">${Math.round(ef)}<tspan style="font-size:${Math.round(fs * 0.38)}px;fill:var(--mute)" dx="2">%</tspan></text>`;
+    const re = st.ref && !st.ref[side].empty && st.ref[side].eff != null ? st.ref[side].eff : null;
+    if (re != null) s += `<text x="${cx}" y="${cy + fs * 0.32 + 18}" text-anchor="middle">基準 ${Math.round(re)}%</text>`;
+  }
+  if (V()[side].empty) s += `<text x="${cx}" y="${cy + Rc + 30}" text-anchor="middle">データなし</text>`;
+  el.innerHTML = s + '</svg>';
+}
+const CS = [['L', 'TF', 'var(--L)'], ['R', 'TF', 'var(--R)'], ['L', 'NF', 'var(--LN)'], ['R', 'NF', 'var(--RN)']];
+function curve(el) {
+  const W = el.clientWidth, H = el.clientHeight, m = { l: 44, r: 12, t: 12, b: 28 };
+  const ser = [];
+  if (st.ref) for (const [k, f] of CS) if (!st.ref[k].empty) ser.push({ v: st.ref[k][f], c: 'var(--mute)', d: '4 4', w: 1.5 });
+  for (const [k, f, c] of CS) if (!V()[k].empty) ser.push({ v: V()[k][f], c, d: '', w: 2.5, dot: true });
+  let lo = 0, hi = 50; for (const x of ser) for (const v of x.v) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const step = hi - lo > 300 ? 100 : 50; lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const X = i => m.l + (W - m.l - m.r) * i / 12, Y = v => m.t + (H - m.t - m.b) * (hi - v) / (hi - lo);
+  let s = `<svg viewBox="0 0 ${W} ${H}">`;
+  for (let v = lo; v <= hi; v += step) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v === 0 ? 'stroke-width="2"' : ''}/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`;
+  for (let i = 0; i <= 12; i += (W < 420 ? 3 : 2)) s += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle">${i * 30}°</text>`;
+  if (st.hi != null) s += `<line x1="${X(st.hi)}" x2="${X(st.hi)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--hl)" stroke-width="1.5"/>`;
+  for (const x of ser) {
+    const pts = [...x.v, x.v[0]].map((v, i) => `${X(i)},${Y(v)}`).join(' ');
+    s += `<polyline points="${pts}" fill="none" stroke="${x.c}" stroke-width="${x.w}" stroke-dasharray="${x.d}" stroke-linejoin="round"/>`;
+    if (x.dot) x.v.forEach((v, i) => { s += `<circle cx="${X(i)}" cy="${Y(v)}" r="${st.hi === i ? 5 : 3}" fill="${x.c}"/>`; });
+  }
+  const cw = (W - m.l - m.r) / 12;
+  for (let i = 0; i < 12; i++) s += `<rect data-i="${i}" x="${X(i) - cw / 2}" y="${m.t}" width="${cw}" height="${H - m.t - m.b}" fill="transparent"/>`;
+  el.innerHTML = s + '</svg>';
+}
+function table() {
+  const C = V(), F = st.ref, has = k => !C[k].empty;
+  let mx = 1; for (const k of ['L', 'R']) if (has(k)) for (const v of C[k].TF) mx = Math.max(mx, Math.abs(v));
+  let h = `<thead><tr><th>角度</th><th class="lc">左 接線</th><th class="rc">右 接線</th><th>左−右</th>${F ? '<th>左 基準差</th><th>右 基準差</th>' : ''}<th class="lc">左 法線</th><th class="rc">右 法線</th><th class="bar">接線力</th></tr></thead><tbody>`;
+  for (let i = 0; i < 12; i++) {
+    const l = has('L') ? C.L.TF[i] : null, r = has('R') ? C.R.TF[i] : null;
+    const bar = v => v == null ? '' : `left:${v < 0 ? 50 + v / mx * 50 : 50}%;width:${Math.abs(v) / mx * 50}%`;
+    const dl = F && !F.L.empty && l != null ? l - F.L.TF[i] : null, dr = F && !F.R.empty && r != null ? r - F.R.TF[i] : null;
+    const sg = v => v == null ? '–' : (v > 0 ? '+' : '') + Math.round(v);
+    h += `<tr><td class="num">${i * 30}°</td><td class="num">${r0(l)}</td><td class="num">${r0(r)}</td><td class="num">${l != null && r != null ? sg(l - r) : '–'}</td>${F ? `<td class="num">${sg(dl)}</td><td class="num">${sg(dr)}</td>` : ''}<td class="num">${has('L') ? r0(C.L.NF[i]) : '–'}</td><td class="num">${has('R') ? r0(C.R.NF[i]) : '–'}</td><td class="bar"><div class="bw"><em></em><span style="${bar(l)};background:var(--L)"></span><span class="r" style="${bar(r)};background:var(--R)"></span></div></td></tr>`;
+  }
+  $('tbl').innerHTML = h + '</tbody>';
+}
+const TL = { l: 36, r: 34 };
+function timeline() {
+  const cv = $('tlc'), W = cv.clientWidth, H = cv.clientHeight, dpr = devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const rows = st.rows; if (!rows.length) return;
+  const T = rows[rows.length - 1].t || 1, ml = TL.l, mb = 20, pw = W - ml - TL.r, ph = H - mb - 6;
+  const X = t => ml + pw * t / T, sh = st.show;
+  const smooth = f => rows.map((r, i) => { let s = 0, n = 0; for (let j = Math.max(0, i - 4); j <= i; j++) { const v = f(rows[j]); if (v != null) { s += v; n++; } } return n ? s / n : null; });
+  const eff = s => r => r[s] && r[s].eff != null && r[s].eff <= 100 && r.cad ? r[s].eff : null;
+  const pwS = smooth(r => r.pw);
+  let pmax = 100; for (const v of pwS) if (v != null) pmax = Math.max(pmax, v); pmax = Math.ceil(pmax / 100) * 100;
+  const ink = col('--ink'), mute = col('--mute'), line = col('--line');
+  g.font = '12px Archivo, sans-serif'; g.fillStyle = mute; g.strokeStyle = line; g.lineWidth = 1;
+  const Yr = v => 6 + ph * (1 - Math.min(1, Math.max(0, v / 150)));
+  if (sh.pw) for (let v = 0; v <= pmax; v += 100) { const y = 6 + ph * (1 - v / pmax); g.beginPath(); g.moveTo(ml, y); g.lineTo(W - TL.r, y); g.stroke(); if (v % 200 === 0 || pmax <= 300) g.fillText(v, 2, y + 4); }
+  if (sh.cad || sh.effL || sh.effR) { g.textAlign = 'right'; for (let v = 0; v <= 150; v += 50) { const y = Yr(v); if (!sh.pw) { g.beginPath(); g.moveTo(ml, y); g.lineTo(W - TL.r, y); g.stroke(); } g.fillText(v, W - 2, y + 4); } g.textAlign = 'left'; }
+  const stepT = T > 7200 ? 1800 : T > 3600 ? 900 : 600;
+  g.textAlign = 'center'; for (let t = 0; t <= T; t += stepT) { if (W < 520 && (t / stepT) % 2) continue; g.fillText(fmt(t), X(t), H - 4); } g.textAlign = 'left';
+  g.fillStyle = col('--sel'); g.fillRect(X(st.a), 0, Math.max(2, X(st.b) - X(st.a)), H - mb);
+  if (st.ref) { g.fillStyle = mute; g.fillRect(X(st.ref.a), H - mb - 3, Math.max(2, X(st.ref.b) - X(st.ref.a)), 3); }
+  const plot = (vals, y, c, w) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); let on = false; vals.forEach((v, i) => { if (v == null) { on = false; return; } const yy = y(v), xx = X(rows[i].t); on ? g.lineTo(xx, yy) : g.moveTo(xx, yy); on = true; }); g.stroke(); };
+  if (sh.cad) plot(rows.map(r => r.cad), Yr, mute, 1);
+  if (sh.effL) plot(smooth(eff('L')), Yr, col('--L'), 1.3);
+  if (sh.effR) plot(smooth(eff('R')), Yr, col('--R'), 1.3);
+  if (sh.pw) plot(pwS, v => 6 + ph * (1 - v / pmax), ink, 1.5);
+  for (const t of [st.a, st.b]) { g.fillStyle = ink; g.fillRect(X(t) - 1, 0, 2, H - mb); }
+}
+function drawAll() {
+  if (!st.cur) return;
+  figs(V()); polar($('pL'), 'L'); polar($('pR'), 'R'); curve($('cv')); table(); timeline();
+  labels();
+}
+const ro = new ResizeObserver(() => drawAll());
+for (const id of ['pL', 'pR', 'cv', 'tl']) ro.observe($(id));
+new MutationObserver(() => drawAll()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+
+/* hover tooltips */
+function setHi(i) { if (st.hi === i) return; st.hi = i; polar($('pL'), 'L'); polar($('pR'), 'R'); curve($('cv')); }
+const tip = $('tip');
+const showTip = (e, html) => {
+  tip.innerHTML = html; tip.style.display = 'block';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > innerWidth - 8) x = e.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = e.clientY - h - 14;
+  tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+};
+const hideTip = () => { tip.style.display = 'none'; };
+const secRow = (lab, S, k, i) => S && !S[k].empty ? `<tr><td>${lab}</td><td class="num">${r0(S[k].TF[i])}</td><td class="num">${r0(S[k].NF[i])}</td><td>${CLSN[cls(S[k].Tr[i])]}</td></tr>` : '';
+const secTip = (i, keys) => `<b>${i * 30}°</b>（${i * 30 - 15 < 0 ? 345 : i * 30 - 15}°〜${(i * 30 + 15) % 360}°）<table><tr><th></th><th>接線</th><th>法線</th><th></th></tr>` +
+  keys.map(k => secRow(`<span class="${k === 'L' ? 'lc' : 'rc'}">${k === 'L' ? '左' : '右'}</span>`, V(), k, i) + (st.ref ? secRow(`${k === 'L' ? '左' : '右'}・基準`, st.ref, k, i) : '')).join('') + '</table>';
+for (const [id, k] of [['pL', 'L'], ['pR', 'R']]) {
+  $(id).addEventListener('pointermove', e => { const g = e.target.closest && e.target.closest('[data-i]'); if (!g || g.dataset.ref === '1') { setHi(null); return hideTip(); } setHi(+g.dataset.i); showTip(e, secTip(+g.dataset.i, [k])); });
+  $(id).addEventListener('pointerleave', () => { setHi(null); hideTip(); });
+}
+$('cv').addEventListener('pointermove', e => { const g = e.target.closest && e.target.closest('[data-i]'); if (!g) { setHi(null); return hideTip(); } setHi(+g.dataset.i); showTip(e, secTip(+g.dataset.i, ['L', 'R'])); });
+$('cv').addEventListener('pointerleave', () => { setHi(null); hideTip(); });
+function tlHover(e) {
+  const rows = st.rows; if (!rows.length) return;
+  const t = Math.round(tAt(e)), b = tl.getBoundingClientRect(), T = rows[rows.length - 1].t;
+  let i = Math.min(rows.length - 1, Math.max(0, rows.findIndex(r => r.t >= t))); const r = rows[i];
+  let s5 = 0, n5 = 0; for (let j = Math.max(0, i - 4); j <= i; j++) if (rows[j].pw != null) { s5 += rows[j].pw; n5++; }
+  const vl = $('vl'); vl.style.display = 'block'; vl.style.left = (TL.l + (b.width - TL.l - TL.r) * r.t / T) + 'px';
+  const lg = x => x ? `${x.tq != null ? x.tq.toFixed(1) : '–'} N·m ・ 効率 ${x.eff != null && x.eff <= 100 ? x.eff : '–'}%` : '–';
+  const bal = r.L && r.R && r.L.tq + r.R.tq > 0 ? `${Math.round(r.L.tq / (r.L.tq + r.R.tq) * 100)}:${Math.round(r.R.tq / (r.L.tq + r.R.tq) * 100)}` : '–';
+  if (st.hov !== r.t) { st.hov = r.t; st.hovS = rangeStats(rows, r.t, r.t); hovDraw(); }
+  showTip(e, `<b>${fmt(r.t)}</b><br>パワー ${r0(r.pw)} W（5秒 ${n5 ? Math.round(s5 / n5) : '–'} W）<br>ケイデンス ${r0(r.cad)} rpm<br><span class="lc">左</span> ${lg(r.L)}<br><span class="rc">右</span> ${lg(r.R)}<br>左右 ${bal}`);
+}
+let raf = 0;
+function hovDraw() { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; figs(V()); polar($('pL'), 'L'); polar($('pR'), 'R'); curve($('cv')); table(); labels(); }); }
+const tlOut = () => { hideTip(); $('vl').style.display = 'none'; if (st.hov != null) { st.hov = null; st.hovS = null; hovDraw(); } };
+
+/* timeline drag */
+const tl = $('tl'); let drag = null;
+const tAt = e => { const b = tl.getBoundingClientRect(), T = st.rows.length ? st.rows[st.rows.length - 1].t : 0; return Math.max(0, Math.min(T, (e.clientX - b.left - TL.l) / (b.width - TL.l - TL.r) * T)); };
+tl.addEventListener('pointerdown', e => { if (!st.rows.length) return; st.hov = null; st.hovS = null; hideTip(); tl.setPointerCapture(e.pointerId); drag = tAt(e); st.a = st.b = Math.round(drag); timeline(); });
+tl.addEventListener('pointerleave', tlOut);
+tl.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' && drag == null) tlHover(e); if (drag == null) return; const t = tAt(e); st.a = Math.round(Math.min(drag, t)); st.b = Math.round(Math.max(drag, t)); $('a').value = fmt(st.a); $('b').value = fmt(st.b); timeline(); });
+tl.addEventListener('pointerup', () => { if (drag == null) return; drag = null; if (st.b - st.a < 5) { st.b = Math.min(st.rows[st.rows.length - 1].t, st.a + 30); } update(); });
+for (const id of ['a', 'b']) $(id).addEventListener('change', () => { const a = parseT($('a').value), b = parseT($('b').value); if (a != null && b != null && b > a) { st.a = a; st.b = b; } update(); });
+$('all').addEventListener('click', () => { if (!st.rows.length) return; st.a = 0; st.b = st.rows[st.rows.length - 1].t; update(); });
+$('pin').addEventListener('click', () => { if (!st.cur) return; st.ref = Object.assign(rangeStats(st.rows, st.a, st.b), { a: st.a, b: st.b }); update(); });
+$('unpin').addEventListener('click', () => { st.ref = null; update(); });
+$('crank').addEventListener('change', rebuild);
+for (const btn of $('chips').querySelectorAll('.chip')) btn.addEventListener('click', () => { const k = btn.dataset.s; st.show[k] = !st.show[k]; btn.setAttribute('aria-pressed', st.show[k]); try { localStorage.setItem('ped-show', JSON.stringify(st.show)); } catch (e) {} timeline(); });
+try { const s = JSON.parse(localStorage.getItem('ped-show')); if (s) { Object.assign(st.show, s); for (const btn of $('chips').querySelectorAll('.chip')) btn.setAttribute('aria-pressed', !!st.show[btn.dataset.s]); } } catch (e) {}
+
+async function openFile(file) {
+  try {
+    $('meta').textContent = file.name + ' を読み込み中…'; $('meta').className = 'meta';
+    let buf = await file.arrayBuffer();
+    const u = new Uint8Array(buf);
+    if (u[0] === 0x50 && u[1] === 0x4b) buf = await unzipFirst(buf);
+    load(parseFit(buf), file.name);
+  } catch (e) { $('meta').textContent = '読み込めませんでした：' + e.message; $('meta').className = 'meta err'; }
+}
+$('f').addEventListener('change', e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ''; });
+addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drag'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('drag'); });
+addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) openFile(f); });
+
+/* sample: 2026-11-24 drill ride (power, cadence and pedaling only) */
+fetch('sample.json').then(r => r.json()).then(arr => {
+  const rec = new Map(), ped = new Map();
+  const hx = s => { const a = []; for (let i = 0; i < s.length; i += 2) a.push(parseInt(s.slice(i, i + 2), 16)); return a; };
+  for (const [ts, pw, cad, R, L] of arr) {
+    rec.set(ts, { pw, cad, hr: null });
+    if (R || L) ped.set(ts, [R, L].map(x => x ? { tq: x[0], cad: x[1], eff: x[2], bytes: hx(x[3]) } : null));
+  }
+  load({ rec, ped }, 'サンプル：11/24 ドリル走');
+  st.a = 480; st.b = 540; update();
+}).catch(() => { $('meta').textContent = 'FITファイルを開いてください'; });
+}
+</script>
+</body>
+</html>
